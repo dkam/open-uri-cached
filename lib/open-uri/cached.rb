@@ -6,8 +6,20 @@ module OpenURI
   class << self
     alias original_open_uri open_uri #:nodoc:
     def open_uri(uri, *rest, &block)
-      response = Cache.get(uri.to_s) ||
-                 Cache.set(uri.to_s, original_open_uri(uri, *rest))
+      response = Cache.get(uri.to_s)
+      
+      # check if cache still valid
+      if response
+        rest['last_modified_since'] = rest['last_modified_since']? || cached.last_modified()
+        modified = original_open_uri(uri, *rest)
+        if modified.meta.status == 304
+          response = modified
+        else
+          response = Cache.set(uri.to_s, modified)
+        end
+      else
+        response = Cache.set(uri.to_s, original_open_uri(uri, *rest))
+      end
 
       if block_given?
         begin
@@ -33,7 +45,6 @@ module OpenURI
       # @return [StringIO]
       def get(key)
         filename = filename_from_url(key)
-        # TODO: head request to determine last_modified vs file modtime
 
         # Read metadata, if it exists
         meta = YAML::load(File.read("#{filename}.meta")) if File.exists?("#{filename}.meta")
