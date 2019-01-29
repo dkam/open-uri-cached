@@ -40,7 +40,7 @@ module OpenURI
 
         f = if File.exist?(filename) && File.size(filename) < OpenURI::Buffer::StringMax
               StringIO.new(File.read(filename))
-            elsif if File.exist?(filename)
+            elsif File.exist?(filename)
               File.open(filename, 'rb')
             else
               nil
