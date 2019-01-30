@@ -6,19 +6,30 @@ module OpenURI
   class << self
     alias original_open_uri open_uri #:nodoc:
     def open_uri(uri, *rest, &block)
-      response = Cache.get(uri.to_s)
-      
-      # check if cache still valid
-      if response
-        rest['last_modified_since'] = rest['last_modified_since']? || cached.last_modified()
-        modified = original_open_uri(uri, *rest)
-        if modified.meta.status == 304
-          response = modified
+      cache_response = Cache.get(uri.to_s)
+
+      # What to do if request includes etag / last_modifed? 
+
+      if cache_response
+        headers = rest.first || {}
+        headers['If-Modified-Since'] = cache_response.meta['last-modified']
+        headers['If-None-Match'] = cache_response.meta['etag']
+        rest[0] = headers
+
+        begin
+          modified = original_open_uri(uri, *rest)
+        rescue OpenURI::HTTPError => e
+          raise e unless e.message == '304 Not Modified'
+          response = cache_response
+          response.meta['x-open-uri-cache'] = 'HIT'
         else
           response = Cache.set(uri.to_s, modified)
+          response.meta['x-open-uri-cache'] = 'STALE'
         end
+
       else
         response = Cache.set(uri.to_s, original_open_uri(uri, *rest))
+        response.meta['x-open-uri-cache'] = 'MISS'
       end
 
       if block_given?
